@@ -243,6 +243,10 @@ export async function getMemeBattleAnalysis(sessionId: string, filter?: any): Pr
   return sendToWorker('getMemeBattleAnalysis', { sessionId, filter })
 }
 
+export async function getCheckInAnalysis(sessionId: string, filter?: any): Promise<any> {
+  return sendToWorker('getCheckInAnalysis', { sessionId, filter })
+}
+
 export async function getAllSessions(): Promise<any[]> {
   return sendToWorker('getAllSessions', {})
 }

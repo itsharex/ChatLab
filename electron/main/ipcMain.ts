@@ -556,6 +556,25 @@ const mainIpcMain = (win: BrowserWindow) => {
       }
     }
   )
+
+  /**
+   * 获取打卡分析数据（火花榜 + 忠臣榜）
+   */
+  ipcMain.handle(
+    'chat:getCheckInAnalysis',
+    async (_, sessionId: string, filter?: { startTs?: number; endTs?: number }) => {
+      try {
+        return await worker.getCheckInAnalysis(sessionId, filter)
+      } catch (error) {
+        console.error('获取打卡分析失败：', error)
+        return {
+          streakRank: [],
+          loyaltyRank: [],
+          totalDays: 0,
+        }
+      }
+    }
+  )
 }
 
 export default mainIpcMain

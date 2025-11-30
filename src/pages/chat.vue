@@ -321,6 +321,8 @@ onMounted(() => {
               :session-id="currentSessionId!"
               :member-activity="memberActivity"
               :time-filter="timeFilter"
+              :selected-year="selectedYear"
+              :available-years="availableYears"
             />
             <RelationshipsTab
               v-else-if="activeTab === 'relationships'"

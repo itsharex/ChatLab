@@ -26,6 +26,7 @@ export {
   getMentionAnalysis,
   getLaughAnalysis,
   getMemeBattleAnalysis,
+  getCheckInAnalysis,
   // 会话管理 API（异步）
   getAllSessions,
   getSession,

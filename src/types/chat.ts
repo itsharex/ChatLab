@@ -650,3 +650,36 @@ export interface MemeBattleAnalysis {
   rankByImageCount: MemeBattleRankItem[] // 按图片总数排名
   totalBattles: number // 总斗图场次
 }
+
+// ==================== 打卡分析类型 ====================
+
+/**
+ * 火花榜项（连续发言天数）
+ */
+export interface StreakRankItem {
+  memberId: number
+  name: string
+  maxStreak: number // 最长连续天数
+  maxStreakStart: string // 最长连续开始日期 (YYYY-MM-DD)
+  maxStreakEnd: string // 最长连续结束日期 (YYYY-MM-DD)
+  currentStreak: number // 当前连续天数（0表示已中断）
+}
+
+/**
+ * 忠臣榜项（累计发言天数）
+ */
+export interface LoyaltyRankItem {
+  memberId: number
+  name: string
+  totalDays: number // 累计发言天数
+  percentage: number // 相对于第一名的百分比
+}
+
+/**
+ * 打卡分析结果
+ */
+export interface CheckInAnalysis {
+  streakRank: StreakRankItem[] // 火花榜 - 连续发言天数排名
+  loyaltyRank: LoyaltyRankItem[] // 忠臣榜 - 累计发言天数排名
+  totalDays: number // 群聊总天数
+}

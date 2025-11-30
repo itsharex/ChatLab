@@ -4,7 +4,7 @@ import type { RepeatAnalysis } from '@/types/chat'
 import { RankListPro, BarChart, ListPro } from '@/components/charts'
 import type { RankItem, BarChartData } from '@/components/charts'
 import { SectionCard, EmptyState, LoadingState } from '@/components/UI'
-import { formatDate, getRankBadgeClass } from '@/utils'
+import { getRankBadgeClass } from '@/utils'
 
 interface TimeFilter {
   startTs?: number
@@ -18,7 +18,7 @@ const props = defineProps<{
 
 const analysis = ref<RepeatAnalysis | null>(null)
 const isLoading = ref(false)
-const rankMode = ref<'count' | 'rate'>('rate')
+const rankMode = ref<'count' | 'rate'>('count')
 
 async function loadData() {
   if (!props.sessionId) return
@@ -30,11 +30,6 @@ async function loadData() {
   } finally {
     isLoading.value = false
   }
-}
-
-function truncateContent(content: string, maxLength = 30): string {
-  if (content.length <= maxLength) return content
-  return content.slice(0, maxLength) + '...'
 }
 
 const originatorRankData = computed<RankItem[]>(() => {
@@ -102,8 +97,8 @@ watch(
         v-if="analysis && analysis.totalRepeatChains > 0"
         v-model="rankMode"
         :items="[
-          { label: '按复读率', value: 'rate' },
           { label: '按次数', value: 'count' },
+          { label: '按复读率', value: 'rate' },
         ]"
         size="xs"
       />
@@ -125,38 +120,6 @@ watch(
             <EmptyState v-else padding="md" />
           </div>
         </div>
-
-        <!-- 最火复读内容榜 -->
-        <ListPro
-          v-if="analysis.hotContents.length > 0"
-          :items="analysis.hotContents"
-          title="🏆 最火复读内容榜"
-          description="单次复读参与人数最多的内容"
-          countTemplate="共 {count} 条热门复读"
-        >
-          <template #item="{ item, index }">
-            <div class="flex items-center gap-3">
-              <span
-                class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold"
-                :class="getRankBadgeClass(index)"
-              >
-                {{ index + 1 }}
-              </span>
-              <span class="shrink-0 text-lg font-bold text-pink-600">{{ item.maxChainLength }}人</span>
-              <div class="flex flex-1 items-center gap-1 overflow-hidden text-sm">
-                <span class="shrink-0 font-medium text-gray-900 dark:text-white">{{ item.originatorName }}：</span>
-                <span class="truncate text-gray-600 dark:text-gray-400" :title="item.content">
-                  {{ truncateContent(item.content) }}
-                </span>
-              </div>
-              <div class="flex shrink-0 items-center gap-2 text-xs text-gray-500">
-                <span>{{ item.count }} 次</span>
-                <span class="text-gray-300 dark:text-gray-600">|</span>
-                <span>{{ formatDate(item.lastTs) }}</span>
-              </div>
-            </div>
-          </template>
-        </ListPro>
       </div>
 
       <!-- 复读排行榜 Grid -->
@@ -210,27 +173,24 @@ watch(
                 </p>
               </div>
 
-              <!-- 反应时间条 -->
+              <!-- 反应时间条（第一名100%，越慢越短） -->
               <div class="flex flex-1 items-center">
                 <div class="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
                   <div
                     class="h-full rounded-full bg-linear-to-r from-yellow-400 to-orange-500"
                     :style="{
-                      width: `${Math.max(
-                        5,
-                        100 - (member.avgTimeDiff / analysis!.fastestRepeaters[0].avgTimeDiff - 1) * 20
-                      )}%`,
+                      width: `${Math.round((analysis!.fastestRepeaters[0].avgTimeDiff / member.avgTimeDiff) * 100)}%`,
                     }"
                   />
                 </div>
               </div>
 
               <!-- 统计数据 -->
-              <div class="shrink-0 text-right">
-                <div class="text-lg font-bold text-gray-900 dark:text-white">
+              <div class="flex shrink-0 items-baseline gap-2">
+                <span class="text-lg font-bold text-gray-900 dark:text-white">
                   {{ (member.avgTimeDiff / 1000).toFixed(2) }}s
-                </div>
-                <div class="text-xs text-gray-500">参与 {{ member.count }} 次</div>
+                </span>
+                <span class="text-xs text-gray-500">· {{ member.count }} 次</span>
               </div>
             </div>
           </template>

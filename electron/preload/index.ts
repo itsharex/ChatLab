@@ -18,6 +18,7 @@ import type {
   MonologueAnalysis,
   MentionAnalysis,
   LaughAnalysis,
+  CheckInAnalysis,
   MemeBattleAnalysis,
 } from '../../src/types/chat'
 
@@ -264,6 +265,13 @@ const chatApi = {
     filter?: { startTs?: number; endTs?: number }
   ): Promise<MemeBattleAnalysis> => {
     return ipcRenderer.invoke('chat:getMemeBattleAnalysis', sessionId, filter)
+  },
+
+  /**
+   * 获取打卡分析数据（火花榜 + 忠臣榜）
+   */
+  getCheckInAnalysis: (sessionId: string, filter?: { startTs?: number; endTs?: number }): Promise<CheckInAnalysis> => {
+    return ipcRenderer.invoke('chat:getCheckInAnalysis', sessionId, filter)
   },
 }
 
