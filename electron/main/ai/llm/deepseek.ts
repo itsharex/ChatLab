@@ -85,6 +85,7 @@ export class DeepSeekService implements ILLMService {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal: options?.abortSignal,
     })
 
     if (!response.ok) {
@@ -163,6 +164,7 @@ export class DeepSeekService implements ILLMService {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(requestBody),
+      signal: options?.abortSignal,
     })
 
     if (!response.ok) {
@@ -183,6 +185,12 @@ export class DeepSeekService implements ILLMService {
 
     try {
       while (true) {
+        // 检查是否已中止
+        if (options?.abortSignal?.aborted) {
+          yield { content: '', isFinished: true, finishReason: 'stop' }
+          return
+        }
+
         const { done, value } = await reader.read()
         if (done) break
 
@@ -278,6 +286,13 @@ export class DeepSeekService implements ILLMService {
           }
         }
       }
+    } catch (error) {
+      // 如果是中止错误，正常返回
+      if (error instanceof Error && error.name === 'AbortError') {
+        yield { content: '', isFinished: true, finishReason: 'stop' }
+        return
+      }
+      throw error
     } finally {
       reader.releaseLock()
     }
@@ -298,4 +313,3 @@ export class DeepSeekService implements ILLMService {
     }
   }
 }
-

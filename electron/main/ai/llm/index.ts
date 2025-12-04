@@ -423,8 +423,12 @@ export async function validateApiKey(provider: LLMProvider, apiKey: string): Pro
 
 /**
  * 发送聊天请求（使用当前配置）
+ * 返回完整的 ChatResponse 对象，包含 finishReason 和 tool_calls
  */
-export async function chat(messages: ChatMessage[], options?: ChatOptions): Promise<string> {
+export async function chat(
+  messages: ChatMessage[],
+  options?: ChatOptions
+): Promise<{ content: string; finishReason: string; tool_calls?: import('./types').ToolCall[] }> {
   aiLogger.info('LLM', '开始非流式聊天请求', {
     messagesCount: messages.length,
     firstMessageRole: messages[0]?.role,
@@ -447,7 +451,7 @@ export async function chat(messages: ChatMessage[], options?: ChatOptions): Prom
       finishReason: response.finishReason,
       usage: response.usage,
     })
-    return response.content
+    return response
   } catch (error) {
     aiLogger.error('LLM', '非流式请求失败', { error: String(error) })
     throw error

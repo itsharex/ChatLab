@@ -39,6 +39,8 @@ export interface ChatOptions {
   stream?: boolean
   /** 可用的工具列表 */
   tools?: ToolDefinition[]
+  /** 中止信号，用于取消请求 */
+  abortSignal?: AbortSignal
 }
 
 /**

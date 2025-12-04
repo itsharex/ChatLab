@@ -210,6 +210,7 @@ watch(
             <template v-for="msg in messages" :key="msg.id">
               <!-- 聊天消息 -->
               <ChatMessage
+                v-if="msg.role === 'user' || msg.content"
                 :role="msg.role"
                 :content="msg.content"
                 :timestamp="msg.timestamp"
@@ -338,7 +339,7 @@ watch(
             </template>
 
             <!-- AI 思考中指示器 -->
-            <div v-if="isAIThinking && !messages[messages.length - 1]?.isStreaming" class="flex items-start gap-3">
+            <div v-if="isAIThinking && !messages[messages.length - 1]?.content" class="flex items-start gap-3">
               <div
                 class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-violet-500 to-purple-600"
               >
@@ -376,6 +377,17 @@ watch(
                       <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:150ms]" />
                       <span class="h-1.5 w-1.5 animate-bounce rounded-full bg-violet-500 [animation-delay:300ms]" />
                     </span>
+                    <span
+                      v-else-if="currentToolStatus.status === 'done'"
+                      class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400"
+                    >
+                      <span>处理结果中</span>
+                      <span class="flex gap-1">
+                        <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                        <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                        <span class="h-1 w-1 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+                      </span>
+                    </span>
                   </div>
                   <!-- 已使用的工具列表 -->
                   <div v-if="toolsUsedInCurrentRound.length > 1" class="flex flex-wrap gap-1">
@@ -409,7 +421,7 @@ watch(
           <div class="mx-auto max-w-3xl">
             <ChatInput
               :disabled="isAIThinking"
-              :status="isAIThinking ? (isLoadingSource ? 'submitted' : 'streaming') : 'ready'"
+              :status="isAIThinking ? 'streaming' : 'ready'"
               @send="handleSend"
               @stop="handleStop"
             />

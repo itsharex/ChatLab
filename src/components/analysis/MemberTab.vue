@@ -175,15 +175,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="p-6">
+  <div class="max-w-5xl p-6">
     <!-- 页面标题 -->
     <div class="mb-6">
       <div class="flex items-center gap-3">
-        <div
-          class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600"
-        >
-          <UIcon name="i-heroicons-user-group" class="h-6 w-6 text-white" />
-        </div>
         <div>
           <h2 class="text-xl font-bold text-gray-900 dark:text-white">群成员管理</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -197,10 +192,9 @@ onMounted(() => {
     <div class="mb-4">
       <UInput
         v-model="searchQuery"
-        placeholder="搜索群昵称、账号名称、ID 或别名..."
+        placeholder="搜索群昵称、账号名称、ID 或别名"
         icon="i-heroicons-magnifying-glass"
-        size="lg"
-        :ui="{ icon: { trailing: { pointer: '' } } }"
+        class="w-100"
       >
         <template #trailing v-if="searchQuery">
           <UButton icon="i-heroicons-x-mark" variant="link" color="neutral" size="xs" @click="searchQuery = ''" />
@@ -229,7 +223,6 @@ onMounted(() => {
           <table class="w-full">
             <thead class="sticky top-0 bg-gray-50 dark:bg-gray-800">
               <tr class="text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
-                <th class="px-4 py-4">ID</th>
                 <th class="px-4 py-4">账号名称</th>
                 <th class="px-4 py-4">群昵称</th>
                 <th class="px-4 py-4">
@@ -244,7 +237,7 @@ onMounted(() => {
                     />
                   </button>
                 </th>
-                <th class="px-4 py-4">自定义别名</th>
+                <th class="px-4 py-4 w-64">自定义别名</th>
                 <th class="px-4 py-4 text-right">操作</th>
               </tr>
             </thead>
@@ -254,28 +247,26 @@ onMounted(() => {
                 :key="member.id"
                 class="hover:bg-gray-50 dark:hover:bg-gray-800/50"
               >
-                <!-- 平台ID -->
+                <!-- 账号名称 (ID) -->
                 <td class="px-4 py-4">
                   <div class="flex items-center gap-2">
                     <div
-                      class="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-pink-600 text-xs font-medium text-white"
+                      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-400 to-pink-600 text-xs font-medium text-white"
                     >
                       {{ getFirstChar(member) }}
                     </div>
-                    <span class="text-sm text-gray-500 dark:text-gray-400">{{ member.platformId }}</span>
+                    <div>
+                      <span class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ member.accountName || '-' }}
+                      </span>
+                      <span class="ml-1 text-sm text-gray-500 dark:text-gray-400">({{ member.platformId }})</span>
+                    </div>
                   </div>
-                </td>
-
-                <!-- 账号名称 -->
-                <td class="px-4 py-4">
-                  <span class="text-sm text-gray-900 dark:text-white">
-                    {{ member.accountName || '-' }}
-                  </span>
                 </td>
 
                 <!-- 群昵称 -->
                 <td class="px-4 py-4">
-                  <span v-if="member.groupNickname" class="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  <span v-if="member.groupNickname" class="text-sm font-medium text-gray-900 dark:text-white">
                     {{ member.groupNickname }}
                   </span>
                   <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -290,13 +281,12 @@ onMounted(() => {
 
                 <!-- 别名 - 直接编辑 -->
                 <td class="px-4 py-4">
-                  <div class="relative max-w-xs">
+                  <div class="max-w-xs">
                     <UInputTags
                       :model-value="member.aliases"
                       @update:model-value="(val) => updateAliases(member, val)"
-                      placeholder="输入后回车..."
-                      size="sm"
-                      :ui="{ base: 'min-h-[36px]' }"
+                      placeholder="输入后回车添加"
+                      class="w-80"
                     />
                     <!-- 保存中指示器 -->
                     <div v-if="savingAliasesId === member.id" class="absolute right-2 top-1/2 -translate-y-1/2">
@@ -307,15 +297,7 @@ onMounted(() => {
 
                 <!-- 操作 -->
                 <td class="px-4 py-4 text-right">
-                  <UTooltip text="删除成员">
-                    <UButton
-                      icon="i-heroicons-trash"
-                      variant="ghost"
-                      color="error"
-                      size="sm"
-                      @click="showDeleteConfirm(member)"
-                    />
-                  </UTooltip>
+                  <UButton label="删除" variant="link" color="error" size="xs" @click="showDeleteConfirm(member)" />
                 </td>
               </tr>
             </tbody>

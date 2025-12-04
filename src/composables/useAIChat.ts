@@ -73,6 +73,8 @@ export function useAIChat(sessionId: string, timeFilter?: { startTs: number; end
   let isAborted = false
   // 当前请求 ID，用于区分不同请求的响应
   let currentRequestId = ''
+  // 当前 Agent 请求 ID，用于中止请求
+  let currentAgentRequestId = ''
 
   // 生成消息 ID
   function generateId(prefix: string): string {
@@ -151,7 +153,8 @@ export function useAIChat(sessionId: string, timeFilter?: { startTs: number; end
 
       console.log('[AI] 调用 Agent API...', context)
 
-      const result = await window.agentApi.runStream(content, context, (chunk) => {
+      // 获取 requestId 和 promise
+      const { requestId: agentReqId, promise: agentPromise } = window.agentApi.runStream(content, context, (chunk) => {
         // 如果已中止或请求 ID 不匹配，忽略后续 chunks
         if (isAborted || thisRequestId !== currentRequestId) {
           console.log('[AI] 已中止或请求已过期，忽略 chunk', {
@@ -255,6 +258,12 @@ export function useAIChat(sessionId: string, timeFilter?: { startTs: number; end
         }
       })
 
+      // 存储 Agent 请求 ID（用于中止）
+      currentAgentRequestId = agentReqId
+      console.log('[AI] Agent 请求已启动，agentReqId:', agentReqId)
+
+      // 等待 Agent 完成
+      const result = await agentPromise
       console.log('[AI] Agent 返回结果:', result)
 
       // 如果请求已过期，不更新
@@ -397,7 +406,7 @@ export function useAIChat(sessionId: string, timeFilter?: { startTs: number; end
   /**
    * 停止生成
    */
-  function stopGeneration(): void {
+  async function stopGeneration(): Promise<void> {
     if (!isAIThinking.value) return
 
     console.log('[AI] 用户停止生成')
@@ -405,6 +414,18 @@ export function useAIChat(sessionId: string, timeFilter?: { startTs: number; end
     isAIThinking.value = false
     isLoadingSource.value = false
     currentToolStatus.value = null
+
+    // 调用主进程中止 Agent 请求
+    if (currentAgentRequestId) {
+      console.log('[AI] 中止 Agent 请求:', currentAgentRequestId)
+      try {
+        await window.agentApi.abort(currentAgentRequestId)
+        console.log('[AI] Agent 请求已中止')
+      } catch (error) {
+        console.error('[AI] 中止 Agent 请求失败:', error)
+      }
+      currentAgentRequestId = ''
+    }
 
     // 标记最后一条 AI 消息为已完成
     const lastMessage = messages.value[messages.value.length - 1]

@@ -728,16 +728,17 @@ const agentApi = {
   /**
    * 执行 Agent 对话（流式）
    * Agent 会自动调用工具获取数据并生成回答
+   * @returns 返回 { requestId, promise }，requestId 可用于中止请求
    */
   runStream: (
     userMessage: string,
     context: ToolContext,
     onChunk?: (chunk: AgentStreamChunk) => void
-  ): Promise<{ success: boolean; result?: AgentResult; error?: string }> => {
-    return new Promise((resolve) => {
-      const requestId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-      console.log('[preload] Agent runStream 开始，requestId:', requestId)
+  ): { requestId: string; promise: Promise<{ success: boolean; result?: AgentResult; error?: string }> } => {
+    const requestId = `agent_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    console.log('[preload] Agent runStream 开始，requestId:', requestId)
 
+    const promise = new Promise<{ success: boolean; result?: AgentResult; error?: string }>((resolve) => {
       // 监听流式 chunks
       const chunkHandler = (
         _event: Electron.IpcRendererEvent,
@@ -782,6 +783,17 @@ const agentApi = {
           resolve({ success: false, error: String(error) })
         })
     })
+
+    return { requestId, promise }
+  },
+
+  /**
+   * 中止 Agent 请求
+   * @param requestId 请求 ID
+   */
+  abort: (requestId: string): Promise<{ success: boolean; error?: string }> => {
+    console.log('[preload] Agent abort 请求，requestId:', requestId)
+    return ipcRenderer.invoke('agent:abort', requestId)
   },
 }
 

@@ -75,6 +75,8 @@ export interface AgentConfig {
   maxToolRounds?: number
   /** LLM 选项 */
   llmOptions?: ChatOptions
+  /** 中止信号，用于取消执行 */
+  abortSignal?: AbortSignal
 }
 
 /**
@@ -164,13 +166,22 @@ export class Agent {
   private messages: ChatMessage[] = []
   private toolsUsed: string[] = []
   private toolRounds: number = 0
+  private abortSignal?: AbortSignal
 
   constructor(context: ToolContext, config: AgentConfig = {}) {
     this.context = context
+    this.abortSignal = config.abortSignal
     this.config = {
       maxToolRounds: config.maxToolRounds ?? 5,
       llmOptions: config.llmOptions ?? { temperature: 0.7, maxTokens: 2048 },
     }
+  }
+
+  /**
+   * 检查是否已中止
+   */
+  private isAborted(): boolean {
+    return this.abortSignal?.aborted ?? false
   }
 
   /**
@@ -179,6 +190,12 @@ export class Agent {
    */
   async execute(userMessage: string): Promise<AgentResult> {
     aiLogger.info('Agent', '开始执行', { userMessage: userMessage.slice(0, 100) })
+
+    // 检查是否已中止
+    if (this.isAborted()) {
+      aiLogger.info('Agent', '执行前已中止')
+      return { content: '', toolsUsed: [], toolRounds: 0 }
+    }
 
     // 初始化消息
     this.messages = [
@@ -194,9 +211,20 @@ export class Agent {
 
     // 执行循环
     while (this.toolRounds < this.config.maxToolRounds!) {
+      // 每轮开始时检查是否中止
+      if (this.isAborted()) {
+        aiLogger.info('Agent', '循环中检测到中止信号')
+        return {
+          content: '',
+          toolsUsed: this.toolsUsed,
+          toolRounds: this.toolRounds,
+        }
+      }
+
       const response = await chat(this.messages, {
         ...this.config.llmOptions,
         tools,
+        abortSignal: this.abortSignal,
       })
 
       aiLogger.info('Agent', 'LLM 响应', {
@@ -281,6 +309,13 @@ export class Agent {
   async executeStream(userMessage: string, onChunk: (chunk: AgentStreamChunk) => void): Promise<AgentResult> {
     aiLogger.info('Agent', '开始流式执行', { userMessage: userMessage.slice(0, 100) })
 
+    // 检查是否已中止
+    if (this.isAborted()) {
+      aiLogger.info('Agent', '执行前已中止')
+      onChunk({ type: 'done', isFinished: true })
+      return { content: '', toolsUsed: [], toolRounds: 0 }
+    }
+
     // 初始化消息
     this.messages = [
       { role: 'system', content: getSystemPrompt() },
@@ -294,16 +329,38 @@ export class Agent {
 
     // 执行循环
     while (this.toolRounds < this.config.maxToolRounds!) {
+      // 每轮开始时检查是否中止
+      if (this.isAborted()) {
+        aiLogger.info('Agent', '循环中检测到中止信号')
+        onChunk({ type: 'done', isFinished: true })
+        return {
+          content: finalContent,
+          toolsUsed: this.toolsUsed,
+          toolRounds: this.toolRounds,
+        }
+      }
+
       let accumulatedContent = ''
       let displayedContent = '' // 已发送给前端的内容
       let toolCalls: ToolCall[] | undefined
       let isBufferingToolCall = false // 是否正在缓冲 tool_call 内容
 
-      // 流式调用 LLM
+      // 流式调用 LLM（传入 abortSignal）
       for await (const chunk of chatStream(this.messages, {
         ...this.config.llmOptions,
         tools,
+        abortSignal: this.abortSignal,
       })) {
+        // 每个 chunk 时检查是否中止
+        if (this.isAborted()) {
+          aiLogger.info('Agent', '流式过程中检测到中止信号')
+          onChunk({ type: 'done', isFinished: true })
+          return {
+            content: finalContent + accumulatedContent,
+            toolsUsed: this.toolsUsed,
+            toolRounds: this.toolRounds,
+          }
+        }
         if (chunk.content) {
           accumulatedContent += chunk.content
 
@@ -426,13 +483,33 @@ export class Agent {
 
     // 超过最大轮数
     aiLogger.warn('Agent', '达到最大工具调用轮数', { maxRounds: this.config.maxToolRounds })
+
+    // 检查是否已中止
+    if (this.isAborted()) {
+      aiLogger.info('Agent', '达到最大轮数时已中止')
+      onChunk({ type: 'done', isFinished: true })
+      return {
+        content: finalContent,
+        toolsUsed: this.toolsUsed,
+        toolRounds: this.toolRounds,
+      }
+    }
+
     this.messages.push({
       role: 'user',
       content: '请根据已获取的信息给出回答，不要再调用工具。',
     })
 
-    // 最后一轮不带 tools
-    for await (const chunk of chatStream(this.messages, this.config.llmOptions)) {
+    // 最后一轮不带 tools（传入 abortSignal）
+    for await (const chunk of chatStream(this.messages, {
+      ...this.config.llmOptions,
+      abortSignal: this.abortSignal,
+    })) {
+      if (this.isAborted()) {
+        aiLogger.info('Agent', '最后一轮流式过程中检测到中止信号')
+        onChunk({ type: 'done', isFinished: true })
+        break
+      }
       if (chunk.content) {
         finalContent += chunk.content
         onChunk({ type: 'content', content: chunk.content })

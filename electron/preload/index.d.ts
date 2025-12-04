@@ -274,7 +274,8 @@ interface AgentApi {
     userMessage: string,
     context: ToolContext,
     onChunk?: (chunk: AgentStreamChunk) => void
-  ) => Promise<{ success: boolean; result?: AgentResult; error?: string }>
+  ) => { requestId: string; promise: Promise<{ success: boolean; result?: AgentResult; error?: string }> }
+  abort: (requestId: string) => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {

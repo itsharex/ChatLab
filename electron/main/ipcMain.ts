@@ -31,6 +31,10 @@ console.log('[IpcMain] Database, Worker and Parser modules imported')
 // 这样用户删除本地文件后仍然可以进行合并（数据已存入临时数据库）
 const tempDbCache = new Map<string, string>()
 
+// ==================== AI Agent 请求追踪 ====================
+// 用于跟踪活跃的 Agent 请求，支持中止操作
+const activeAgentRequests = new Map<string, AbortController>()
+
 /**
  * 清理指定文件的缓存（删除临时数据库）
  */
@@ -1226,12 +1230,20 @@ const mainIpcMain = (win: BrowserWindow) => {
     })
 
     try {
-      const agent = new Agent(context)
+      // 创建 AbortController 并存储
+      const abortController = new AbortController()
+      activeAgentRequests.set(requestId, abortController)
+
+      const agent = new Agent(context, { abortSignal: abortController.signal })
 
       // 异步执行，通过事件发送流式数据
       ;(async () => {
         try {
           const result = await agent.executeStream(userMessage, (chunk: AgentStreamChunk) => {
+            // 如果已中止，不再发送
+            if (abortController.signal.aborted) {
+              return
+            }
             aiLogger.debug('IPC', `Agent chunk: ${requestId}`, {
               type: chunk.type,
               contentLength: chunk.content?.length,
@@ -1239,6 +1251,12 @@ const mainIpcMain = (win: BrowserWindow) => {
             })
             win.webContents.send('agent:streamChunk', { requestId, chunk })
           })
+
+          // 如果已中止，不发送完成信息
+          if (abortController.signal.aborted) {
+            aiLogger.info('IPC', `Agent 已中止，跳过完成信息: ${requestId}`)
+            return
+          }
 
           // 发送完成信息
           win.webContents.send('agent:complete', {
@@ -1256,11 +1274,19 @@ const mainIpcMain = (win: BrowserWindow) => {
             contentLength: result.content.length,
           })
         } catch (error) {
+          // 如果是中止错误，不报告为错误
+          if (error instanceof Error && error.name === 'AbortError') {
+            aiLogger.info('IPC', `Agent 请求已中止: ${requestId}`)
+            return
+          }
           aiLogger.error('IPC', `Agent 执行出错: ${requestId}`, { error: String(error) })
           win.webContents.send('agent:streamChunk', {
             requestId,
             chunk: { type: 'error', error: String(error), isFinished: true },
           })
+        } finally {
+          // 清理请求追踪
+          activeAgentRequests.delete(requestId)
         }
       })()
 
@@ -1268,6 +1294,24 @@ const mainIpcMain = (win: BrowserWindow) => {
     } catch (error) {
       aiLogger.error('IPC', `创建 Agent 请求失败: ${requestId}`, { error: String(error) })
       return { success: false, error: String(error) }
+    }
+  })
+
+  /**
+   * 中止 Agent 请求
+   */
+  ipcMain.handle('agent:abort', async (_, requestId: string) => {
+    aiLogger.info('IPC', `收到中止请求: ${requestId}`)
+
+    const abortController = activeAgentRequests.get(requestId)
+    if (abortController) {
+      abortController.abort()
+      activeAgentRequests.delete(requestId)
+      aiLogger.info('IPC', `已中止 Agent 请求: ${requestId}`)
+      return { success: true }
+    } else {
+      aiLogger.warn('IPC', `未找到 Agent 请求: ${requestId}`)
+      return { success: false, error: '未找到该请求' }
     }
   })
 }

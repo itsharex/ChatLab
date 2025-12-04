@@ -49,7 +49,15 @@ function handleStop() {
         variant="subtle"
         @submit="handleSubmit"
       >
-        <UChatPromptSubmit :status="chatStatus" class="rounded-full" color="primary" @stop="handleStop" />
+        <UButton
+          v-if="chatStatus === 'streaming'"
+          icon="i-heroicons-stop-20-solid"
+          color="primary"
+          variant="solid"
+          class="rounded-full"
+          @click="handleStop"
+        />
+        <UChatPromptSubmit v-else :status="chatStatus" class="rounded-full" color="primary" @stop="handleStop" />
       </UChatPrompt>
     </div>
   </div>
