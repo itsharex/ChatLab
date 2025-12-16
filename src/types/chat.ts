@@ -33,6 +33,7 @@ export enum MessageType {
   SHARE = 24, // 分享（音乐、小程序等）
   REPLY = 25, // 引用回复
   FORWARD = 26, // 转发消息
+  CONTACT = 27, // 名片消息
 
   // ========== 系统消息类型 (80-89) ==========
   SYSTEM = 80, // 系统消息（入群/退群/群公告等）
@@ -63,6 +64,7 @@ export const MESSAGE_TYPE_NAMES: Record<number, string> = {
   [MessageType.SHARE]: '分享',
   [MessageType.REPLY]: '回复',
   [MessageType.FORWARD]: '转发',
+  [MessageType.CONTACT]: '名片',
   // 系统消息类型
   [MessageType.SYSTEM]: '系统',
   [MessageType.RECALL]: '撤回',
