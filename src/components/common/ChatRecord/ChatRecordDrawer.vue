@@ -56,7 +56,7 @@ watch(
 </script>
 
 <template>
-  <UDrawer v-model:open="layoutStore.showChatRecordDrawer" direction="right" :handle="false">
+  <UDrawer v-model:open="layoutStore.showChatRecordDrawer" direction="right" :handle="false" :ui="{ content: 'z-100' }">
     <template #content>
       <div class="flex h-full w-[580px] flex-col bg-white dark:bg-gray-900">
         <!-- 头部 -->
@@ -72,18 +72,10 @@ watch(
         </div>
 
         <!-- 筛选面板 -->
-        <FilterPanel
-          :query="localQuery"
-          @apply="handleApplyFilter"
-          @reset="handleResetFilter"
-        />
+        <FilterPanel :query="localQuery" @apply="handleApplyFilter" @reset="handleResetFilter" />
 
         <!-- 消息列表 -->
-        <MessageList
-          ref="messageListRef"
-          :query="localQuery"
-          @count-change="handleCountChange"
-        />
+        <MessageList ref="messageListRef" :query="localQuery" @count-change="handleCountChange" />
 
         <!-- 底部统计 -->
         <div v-if="messageCount > 0" class="border-t border-gray-200 px-4 py-2 dark:border-gray-800">
