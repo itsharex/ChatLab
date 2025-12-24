@@ -2,6 +2,23 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { AnalysisSession, ImportProgress } from '@/types/base'
 
+/** 迁移信息 */
+export interface MigrationInfo {
+  version: number
+  /** 技术描述（面向开发者） */
+  description: string
+  /** 用户可读的升级原因（显示在弹窗中） */
+  userMessage: string
+}
+
+/** 迁移检查结果 */
+export interface MigrationCheckResult {
+  needsMigration: boolean
+  count: number
+  currentVersion: number
+  pendingMigrations: MigrationInfo[]
+}
+
 /**
  * 会话与导入相关的全局状态
  */
@@ -23,6 +40,48 @@ export const useSessionStore = defineStore(
       if (!currentSessionId.value) return null
       return sessions.value.find((s) => s.id === currentSessionId.value) || null
     })
+
+    // 迁移相关状态
+    const migrationNeeded = ref(false)
+    const migrationCount = ref(0)
+    const pendingMigrations = ref<MigrationInfo[]>([])
+    const isMigrating = ref(false)
+
+    /**
+     * 检查是否需要数据库迁移
+     */
+    async function checkMigration(): Promise<MigrationCheckResult> {
+      try {
+        const result = await window.chatApi.checkMigration()
+        migrationNeeded.value = result.needsMigration
+        migrationCount.value = result.count
+        pendingMigrations.value = result.pendingMigrations || []
+        return result
+      } catch (error) {
+        console.error('检查迁移失败:', error)
+        return { needsMigration: false, count: 0, currentVersion: 0, pendingMigrations: [] }
+      }
+    }
+
+    /**
+     * 执行数据库迁移
+     */
+    async function runMigration(): Promise<{ success: boolean; error?: string }> {
+      isMigrating.value = true
+      try {
+        const result = await window.chatApi.runMigration()
+        if (result.success) {
+          migrationNeeded.value = false
+          migrationCount.value = 0
+        }
+        return result
+      } catch (error) {
+        console.error('执行迁移失败:', error)
+        return { success: false, error: String(error) }
+      } finally {
+        isMigrating.value = false
+      }
+    }
 
     /**
      * 从数据库加载会话列表
@@ -199,6 +258,25 @@ export const useSessionStore = defineStore(
       currentSessionId.value = null
     }
 
+    /**
+     * 更新会话的所有者
+     */
+    async function updateSessionOwnerId(id: string, ownerId: string | null): Promise<boolean> {
+      try {
+        const success = await window.chatApi.updateSessionOwnerId(id, ownerId)
+        if (success) {
+          const session = sessions.value.find((s) => s.id === id)
+          if (session) {
+            session.ownerId = ownerId
+          }
+        }
+        return success
+      } catch (error) {
+        console.error('更新会话所有者失败:', error)
+        return false
+      }
+    }
+
     return {
       sessions,
       currentSessionId,
@@ -206,6 +284,14 @@ export const useSessionStore = defineStore(
       importProgress,
       isInitialized,
       currentSession,
+      // 迁移相关
+      migrationNeeded,
+      migrationCount,
+      pendingMigrations,
+      isMigrating,
+      checkMigration,
+      runMigration,
+      // 会话操作
       loadSessions,
       importFile,
       importFileFromPath,
@@ -213,6 +299,7 @@ export const useSessionStore = defineStore(
       deleteSession,
       renameSession,
       clearSelection,
+      updateSessionOwnerId,
     }
   },
   {

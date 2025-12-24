@@ -8,12 +8,48 @@ import * as worker from '../worker/workerManager'
 import * as parser from '../parser'
 import { detectFormat, type ParseProgress } from '../parser'
 import type { IpcContext } from './types'
+import { CURRENT_SCHEMA_VERSION, getPendingMigrationInfos, type MigrationInfo } from '../database/migrations'
 
 /**
  * 注册聊天记录相关 IPC 处理器
  */
 export function registerChatHandlers(ctx: IpcContext): void {
   const { win } = ctx
+
+  // ==================== 数据库迁移 ====================
+
+  /**
+   * 检查是否需要数据库迁移
+   */
+  ipcMain.handle('chat:checkMigration', async () => {
+    try {
+      const result = databaseCore.checkMigrationNeeded()
+      // 获取待执行的迁移信息（从最低版本开始）
+      const pendingMigrations = getPendingMigrationInfos(result.lowestVersion)
+      return {
+        needsMigration: result.count > 0,
+        count: result.count,
+        currentVersion: CURRENT_SCHEMA_VERSION,
+        pendingMigrations,
+      }
+    } catch (error) {
+      console.error('[IpcMain] 检查迁移失败:', error)
+      return { needsMigration: false, count: 0, currentVersion: CURRENT_SCHEMA_VERSION, pendingMigrations: [] }
+    }
+  })
+
+  /**
+   * 执行数据库迁移
+   */
+  ipcMain.handle('chat:runMigration', async () => {
+    try {
+      const result = databaseCore.migrateAllDatabases()
+      return result
+    } catch (error) {
+      console.error('[IpcMain] 执行迁移失败:', error)
+      return { success: false, migratedCount: 0, error: String(error) }
+    }
+  })
 
   // ==================== 聊天记录导入与分析 ====================
 
@@ -518,6 +554,21 @@ export function registerChatHandlers(ctx: IpcContext): void {
       return await worker.deleteMember(sessionId, memberId)
     } catch (error) {
       console.error('删除成员失败：', error)
+      return false
+    }
+  })
+
+  /**
+   * 更新会话的所有者（ownerId）
+   */
+  ipcMain.handle('chat:updateSessionOwnerId', async (_, sessionId: string, ownerId: string | null) => {
+    try {
+      // 先关闭数据库连接
+      await worker.closeDatabase(sessionId)
+      // 执行更新
+      return databaseCore.updateSessionOwnerId(sessionId, ownerId)
+    } catch (error) {
+      console.error('更新会话所有者失败：', error)
       return false
     }
   })

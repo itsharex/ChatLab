@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AgreementModal from './components/AgreementModal.vue'
+import MigrationModal from './components/MigrationModal.vue'
 import { useSessionStore } from '@/stores/session'
 
 const sessionStore = useSessionStore()
@@ -250,5 +251,8 @@ function getProgressDetail(): string {
 
     <!-- 用户协议弹窗 -->
     <AgreementModal />
+
+    <!-- 数据库迁移弹窗 -->
+    <MigrationModal />
   </div>
 </template>

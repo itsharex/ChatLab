@@ -8,6 +8,7 @@ import { app } from 'electron'
 import * as fs from 'fs'
 import * as path from 'path'
 import type { DbMeta, ParseResult, AnalysisSession } from '../../../src/types/base'
+import { migrateDatabase, needsMigration, CURRENT_SCHEMA_VERSION } from './migrations'
 
 // 数据库存储目录
 let DB_DIR: string | null = null
@@ -72,7 +73,9 @@ function createDatabase(sessionId: string): Database.Database {
       type TEXT NOT NULL,
       imported_at INTEGER NOT NULL,
       group_id TEXT,
-      group_avatar TEXT
+      group_avatar TEXT,
+      owner_id TEXT,
+      schema_version INTEGER DEFAULT ${CURRENT_SCHEMA_VERSION}
     );
 
     CREATE TABLE IF NOT EXISTS member (
@@ -115,14 +118,34 @@ function createDatabase(sessionId: string): Database.Database {
 
 /**
  * 打开已存在的数据库
+ * @param readonly 是否只读模式（默认 true）
  */
-export function openDatabase(sessionId: string): Database.Database | null {
+export function openDatabase(sessionId: string, readonly = true): Database.Database | null {
   const dbPath = getDbPath(sessionId)
   if (!fs.existsSync(dbPath)) {
     return null
   }
-  const db = new Database(dbPath, { readonly: true })
+  const db = new Database(dbPath, { readonly })
   db.pragma('journal_mode = WAL')
+  return db
+}
+
+/**
+ * 打开数据库并执行迁移（如果需要）
+ * 用于需要写入的场景
+ */
+export function openDatabaseWithMigration(sessionId: string): Database.Database | null {
+  const dbPath = getDbPath(sessionId)
+  if (!fs.existsSync(dbPath)) {
+    return null
+  }
+
+  const db = new Database(dbPath)
+  db.pragma('journal_mode = WAL')
+
+  // 执行迁移
+  migrateDatabase(db)
+
   return db
 }
 
@@ -137,8 +160,8 @@ export function importData(parseResult: ParseResult): string {
   try {
     const importTransaction = db.transaction(() => {
       const insertMeta = db.prepare(`
-        INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO meta (name, platform, type, imported_at, group_id, group_avatar, owner_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
       insertMeta.run(
         parseResult.meta.name,
@@ -146,7 +169,8 @@ export function importData(parseResult: ParseResult): string {
         parseResult.meta.type,
         Math.floor(Date.now() / 1000),
         parseResult.meta.groupId || null,
-        parseResult.meta.groupAvatar || null
+        parseResult.meta.groupAvatar || null,
+        parseResult.meta.ownerId || null
       )
 
       const insertMember = db.prepare(`
@@ -159,7 +183,12 @@ export function importData(parseResult: ParseResult): string {
       const memberIdMap = new Map<string, number>()
 
       for (const member of parseResult.members) {
-        insertMember.run(member.platformId, member.accountName || null, member.groupNickname || null, member.avatar || null)
+        insertMember.run(
+          member.platformId,
+          member.accountName || null,
+          member.groupNickname || null,
+          member.avatar || null
+        )
         const row = getMemberId.get(member.platformId) as { id: number }
         memberIdMap.set(member.platformId, row.id)
       }
@@ -268,113 +297,22 @@ export function importData(parseResult: ParseResult): string {
 }
 
 /**
- * 获取所有分析会话列表
+ * 更新会话的 ownerId
  */
-export function getAllSessions(): AnalysisSession[] {
-  ensureDbDir()
-  const sessions: AnalysisSession[] = []
-  const dbDir = getDbDir()
-  const allFiles = fs.readdirSync(dbDir)
-  const files = allFiles.filter((f) => f.endsWith('.db'))
-
-  for (const file of files) {
-    const sessionId = file.replace('.db', '')
-    const dbPath = getDbPath(sessionId)
-
-    try {
-      const db = new Database(dbPath)
-      db.pragma('journal_mode = WAL')
-
-      const meta = db.prepare('SELECT * FROM meta LIMIT 1').get() as DbMeta | undefined
-
-      if (meta) {
-        const messageCount = (
-          db
-            .prepare(
-              `SELECT COUNT(*) as count
-             FROM message msg
-             JOIN member m ON msg.sender_id = m.id
-             WHERE COALESCE(m.account_name, '') != '系统消息'`
-            )
-            .get() as { count: number }
-        ).count
-        const memberCount = (
-          db
-            .prepare(
-              `SELECT COUNT(*) as count
-             FROM member
-             WHERE COALESCE(account_name, '') != '系统消息'`
-            )
-            .get() as { count: number }
-        ).count
-
-        sessions.push({
-          id: sessionId,
-          name: meta.name,
-          platform: meta.platform as AnalysisSession['platform'],
-          type: meta.type as AnalysisSession['type'],
-          importedAt: meta.imported_at,
-          messageCount,
-          memberCount,
-          dbPath,
-          groupId: meta.group_id || null,
-          groupAvatar: meta.group_avatar || null,
-        })
-      }
-
-      db.close()
-    } catch (error) {
-      console.error(`[Database] Failed to read database \${file}:`, error)
-    }
+export function updateSessionOwnerId(sessionId: string, ownerId: string | null): boolean {
+  // 使用带迁移的打开方式，确保 owner_id 列存在
+  const db = openDatabaseWithMigration(sessionId)
+  if (!db) {
+    return false
   }
 
-  return sessions.sort((a, b) => b.importedAt - a.importedAt)
-}
-
-/**
- * 获取单个会话信息
- */
-export function getSession(sessionId: string): AnalysisSession | null {
-  const db = openDatabase(sessionId)
-  if (!db) return null
-
   try {
-    const meta = db.prepare('SELECT * FROM meta LIMIT 1').get() as DbMeta | undefined
-    if (!meta) return null
-
-    const messageCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) as count
-         FROM message msg
-         JOIN member m ON msg.sender_id = m.id
-         WHERE COALESCE(m.account_name, '') != '系统消息'`
-        )
-        .get() as { count: number }
-    ).count
-
-    const memberCount = (
-      db
-        .prepare(
-          `SELECT COUNT(*) as count
-         FROM member
-         WHERE COALESCE(account_name, '') != '系统消息'`
-        )
-        .get() as { count: number }
-    ).count
-
-    return {
-      id: sessionId,
-      name: meta.name,
-      platform: meta.platform as AnalysisSession['platform'],
-      type: meta.type as AnalysisSession['type'],
-      importedAt: meta.imported_at,
-      messageCount,
-      memberCount,
-      dbPath: getDbPath(sessionId),
-      groupId: meta.group_id || null,
-      groupAvatar: meta.group_avatar || null,
-    }
+    const stmt = db.prepare('UPDATE meta SET owner_id = ?')
+    stmt.run(ownerId)
+    return true
+  } catch (error) {
+    console.error('[Database] Failed to update session ownerId:', error)
+    return false
   } finally {
     db.close()
   }
@@ -435,4 +373,80 @@ export function renameSession(sessionId: string, newName: string): boolean {
 export function getDbDirectory(): string {
   ensureDbDir()
   return getDbDir()
+}
+
+/**
+ * 检查是否有数据库需要迁移
+ * @returns 需要迁移的数据库数量和最低版本
+ */
+export function checkMigrationNeeded(): { count: number; sessionIds: string[]; lowestVersion: number } {
+  ensureDbDir()
+  const dbDir = getDbDir()
+  const files = fs.readdirSync(dbDir).filter((f) => f.endsWith('.db'))
+  const needsMigrationList: string[] = []
+  let lowestVersion = CURRENT_SCHEMA_VERSION
+
+  for (const file of files) {
+    const sessionId = file.replace('.db', '')
+    const dbPath = getDbPath(sessionId)
+
+    try {
+      const db = new Database(dbPath, { readonly: true })
+      db.pragma('journal_mode = WAL')
+
+      if (needsMigration(db)) {
+        needsMigrationList.push(sessionId)
+        // 获取这个数据库的版本
+        const tableInfo = db.prepare('PRAGMA table_info(meta)').all() as Array<{ name: string }>
+        const hasVersionColumn = tableInfo.some((col) => col.name === 'schema_version')
+        let dbVersion = 0
+        if (hasVersionColumn) {
+          const result = db.prepare('SELECT schema_version FROM meta LIMIT 1').get() as
+            | { schema_version: number | null }
+            | undefined
+          dbVersion = result?.schema_version ?? 0
+        }
+        lowestVersion = Math.min(lowestVersion, dbVersion)
+      }
+
+      db.close()
+    } catch (error) {
+      console.error(`[Database] Failed to check migration for ${file}:`, error)
+    }
+  }
+
+  return { count: needsMigrationList.length, sessionIds: needsMigrationList, lowestVersion }
+}
+
+/**
+ * 执行所有数据库的迁移
+ * @returns 迁移结果
+ */
+export function migrateAllDatabases(): { success: boolean; migratedCount: number; error?: string } {
+  const { sessionIds } = checkMigrationNeeded()
+
+  if (sessionIds.length === 0) {
+    return { success: true, migratedCount: 0 }
+  }
+
+  let migratedCount = 0
+
+  for (const sessionId of sessionIds) {
+    try {
+      const db = openDatabaseWithMigration(sessionId)
+      if (db) {
+        db.close()
+        migratedCount++
+      }
+    } catch (error) {
+      console.error(`[Database] Failed to migrate ${sessionId}:`, error)
+      return {
+        success: false,
+        migratedCount,
+        error: `迁移 ${sessionId} 失败: ${error instanceof Error ? error.message : String(error)}`,
+      }
+    }
+  }
+
+  return { success: true, migratedCount }
 }

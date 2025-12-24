@@ -65,6 +65,29 @@ const api = {
 
 // Chat Analysis API
 const chatApi = {
+  // ==================== 数据库迁移 ====================
+
+  /**
+   * 检查是否需要数据库迁移
+   */
+  checkMigration: (): Promise<{
+    needsMigration: boolean
+    count: number
+    currentVersion: number
+    pendingMigrations: Array<{ version: number; userMessage: string }>
+  }> => {
+    return ipcRenderer.invoke('chat:checkMigration')
+  },
+
+  /**
+   * 执行数据库迁移
+   */
+  runMigration: (): Promise<{ success: boolean; migratedCount: number; error?: string }> => {
+    return ipcRenderer.invoke('chat:runMigration')
+  },
+
+  // ==================== 聊天记录导入与分析 ====================
+
   /**
    * 选择聊天记录文件
    */
@@ -316,6 +339,14 @@ const chatApi = {
    */
   deleteMember: (sessionId: string, memberId: number): Promise<boolean> => {
     return ipcRenderer.invoke('chat:deleteMember', sessionId, memberId)
+  },
+
+  /**
+   * 更新会话的所有者（ownerId）
+   * @param ownerId 成员的 platformId，设置为 null 则清除
+   */
+  updateSessionOwnerId: (sessionId: string, ownerId: string | null): Promise<boolean> => {
+    return ipcRenderer.invoke('chat:updateSessionOwnerId', sessionId, ownerId)
   },
 
   // ==================== SQL 实验室 ====================
